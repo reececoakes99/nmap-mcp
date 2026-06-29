@@ -64,15 +64,7 @@ OUTPUT:
       }
     );
   },
-  {
-    capabilities: {
-      tools: {
-        "do-nmap": {
-          description: "Generate nmap command for port scanning and network discovery"
-        }
-      }
-    }
-  },
+  undefined,
   {
     basePath: "",
     verboseLogs: true,
