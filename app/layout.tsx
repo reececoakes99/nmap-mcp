@@ -1,5 +1,3 @@
-import { Analytics } from '@vercel/analytics/next';
-
 export default function RootLayout({
   children,
 }: {
@@ -8,11 +6,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <title>nmap-mcp</title>
+        <title>OSINT Tools MCP Server</title>
       </head>
       <body>
         {children}
-        <Analytics />
       </body>
     </html>
   );
