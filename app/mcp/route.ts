@@ -68,8 +68,8 @@ const handler = createMcpHandler(
         target: z.string().describe("Target to scan - SpiderFoot auto-detects type from: IP address, IPv6 address, domain, email, phone number, username, person name, Bitcoin address, network block, or BGP AS"),
       },
       async ({ target }) => {
-        const command = `python3 /opt/spiderfoot/sf.py -s "${target}" -u all -o json -q`;
-
+        const escapedTarget = target.replace(/(["\\`$])/g, "\\$1").replace(/\r?\n/g, " ");
+        const command = `python3 /opt/spiderfoot/sf.py -s "${escapedTarget}" -u all -o json -q`;
         return {
           content: [{
             type: "text" as const,
