@@ -1,70 +1,108 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 
+/**
+ * Rejects any string that contains characters that cannot appear in a safe
+ * nmap target or flag value:
+ *   - Control characters (includes \n, \r, \0, \t, etc.)
+ *   - Backtick, $( ), semicolon, pipe, ampersand — classic shell-injection vectors
+ *   - Null bytes
+ *
+ * This runs AFTER Zod trims whitespace, so a purely-whitespace input is caught
+ * by the .min(1) guard first.
+ */
+const DISALLOWED_CHARS = /[\x00-\x1F\x7F`$;|&(){}\\<>]/;
+
+const safeString = z
+  .string()
+  .trim()
+  .min(1, "Value must not be empty")
+  .refine(
+    (s) => !DISALLOWED_CHARS.test(s),
+    "Value contains disallowed characters (control chars, shell metacharacters)"
+  );
+
+/**
+ * Shell-escapes a single argument for POSIX shells (bash/sh/zsh).
+ *
+ * Strategy:
+ *   1. If the value is already safe (alphanumeric + a small allow-list of
+ *      nmap-specific chars), pass it through unquoted.
+ *   2. Otherwise single-quote it.  Inside single quotes the only character
+ *      that needs special handling is a literal single-quote itself, which is
+ *      closed, escaped, and re-opened: foo'bar -> 'foo'\''bar'
+ *
+ * After safeString validation, control characters and shell metacharacters are
+ * already rejected, so this is a defence-in-depth measure for any values that
+ * slip through (e.g. spaces, colons, commas in port ranges like "1-65535").
+ */
+function shellEscape(value: string): string {
+  // Fast-path: characters that never need quoting in nmap usage
+  if (/^[A-Za-z0-9_/.\-:,+=@%^~[\]]+$/.test(value)) {
+    return value;
+  }
+  // Single-quote wrap with internal single-quote escaping
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 const handler = createMcpHandler(
   async (server) => {
     server.registerTool(
       "do-nmap",
       {
         title: "do-nmap",
-        description: "Generate nmap command for port scanning and network discovery. Since CLI tools cannot execute on serverless, this returns the command to run locally.",
+        description:
+          "Generate an nmap command string for port scanning and network discovery. " +
+          "Because CLI tools cannot execute on Vercel serverless, the command is returned " +
+          "for the user to run on their local machine where nmap is installed.",
         inputSchema: z.object({
-          target: z.string().describe("Target ip or hostname to detect open ports"),
-          nmap_args: z.array(z.string()).optional().describe(`Additional nmap arguments. Examples:
-TARGET SPECIFICATION:
-  -iL <inputfilename>: Input from list of hosts/networks
-  -iR <num hosts>: Choose random targets
-  --exclude <host1[,host2],...>: Exclude hosts/networks
-HOST DISCOVERY:
-  -sL: List Scan - simply list targets to scan
-  -sn: Ping Scan - disable port scan
-  -Pn: Treat all hosts as online -- skip host discovery
-  -PS/PA/PU/PY[portlist]: TCP SYN, TCP ACK, UDP or SCTP discovery
-  -PE/PP/PM: ICMP echo, timestamp, and netmask request probes
-  -n/-R: Never do DNS resolution/Always resolve
-SCAN TECHNIQUES:
-  -sS/sT/sA/sW/sM: TCP SYN/Connect()/ACK/Window/Maimon scans
-  -sU: UDP Scan
-  -sN/sF/sX: TCP Null, FIN, and Xmas scans
-PORT SPECIFICATION:
-  -p <port ranges>: Only scan specified ports (e.g. -p22; -p1-65535)
-  -F: Fast mode - Scan fewer ports than the default scan
-  --top-ports <number>: Scan most common ports
-SERVICE/VERSION DETECTION:
-  -sV: Probe open ports to determine service/version info
-  -sC: equivalent to --script=default
-OS DETECTION:
-  -O: Enable OS detection
-  -A: Enable OS detection, version detection, script scanning, and traceroute
-TIMING:
-  -T<0-5>: Set timing template (higher is faster)
-OUTPUT:
-  -oN/-oX/-oS/-oG <file>: Output in normal, XML, s|<rIpt kIddi3, Grepable format
-  -v: Increase verbosity level
-  --open: Only show open (or possibly open) ports`),
+          target: safeString.describe(
+            "IP address, hostname, or CIDR range to scan (e.g. 192.168.1.1, example.com, 10.0.0.0/24)."
+          ),
+          nmap_args: z
+            .array(safeString)
+            .max(50, "Too many arguments")
+            .optional()
+            .describe(
+              "Additional nmap flags as separate array elements, e.g. [\"-sV\", \"-p\", \"1-1000\", \"-T4\"]. " +
+              "See https://nmap.org/book/man.html for the full reference."
+            ),
         }),
       },
       async ({ target, nmap_args }) => {
-        // Build the nmap command - spawn() does NOT work on Vercel serverless!
-        const args: string[] = [];
+        // Validation has already ensured target and every nmap_arg is free of
+        // shell metacharacters; shellEscape adds a final quoting layer for
+        // values that contain spaces or other benign-but-special characters.
+        const args: string[] = [
+          ...(nmap_args ?? []).map(shellEscape),
+          shellEscape(target),
+        ];
 
-        if (nmap_args && nmap_args.length > 0) {
-          args.push(...nmap_args);
-        }
-        args.push(target);
+        const command = `nmap ${args.join(" ")}`;
 
-        const shellEscape = (value: string) => {
-          if (/^[A-Za-z0-9_\/\.\-:]+$/.test(value)) return value;
-          return `'${value.replace(/'/g, "'\\''")}'`;
-        };
-
-        const command = `nmap ${args.map(shellEscape).join(" ")}`;
-        
         return {
-          content: [{
-            type: "text",
-            text: `To run nmap locally, execute the following command:\n\n${command}\n\nNote: This MCP server provides the interface for nmap commands. Since CLI tools cannot execute on serverless platforms, please run this command on your local machine where nmap is installed.\n\nExample usage:\n- Basic scan: nmap 192.168.1.1\n- Aggressive scan: nmap -A 192.168.1.1\n- Port range: nmap -p 1-1000 192.168.1.1\n- Service detection: nmap -sV 192.168.1.1`
-          }]
+          content: [
+            {
+              type: "text",
+              text: [
+                "Run the following command on your local machine where nmap is installed:",
+                "",
+                "```",
+                command,
+                "```",
+                "",
+                "Common usage examples:",
+                "  Basic scan:          nmap 192.168.1.1",
+                "  Service detection:   nmap -sV 192.168.1.1",
+                "  Aggressive scan:     nmap -A 192.168.1.1",
+                "  Port range:          nmap -p 1-1000 192.168.1.1",
+                "  Top 100 ports fast:  nmap -F --top-ports 100 192.168.1.1",
+                "  OS + version:        nmap -O -sV 192.168.1.1",
+                "",
+                "Full nmap reference: https://nmap.org/book/man.html",
+              ].join("\n"),
+            },
+          ],
         };
       }
     );
@@ -73,10 +111,11 @@ OUTPUT:
     capabilities: {
       tools: {
         "do-nmap": {
-          description: "Generate nmap command for port scanning and network discovery"
-        }
-      }
-    }
+          description:
+            "Generate an nmap command string for port scanning and network discovery",
+        },
+      },
+    },
   },
   {
     basePath: "",
