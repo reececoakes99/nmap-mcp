@@ -47,13 +47,18 @@ OUTPUT:
       async ({ target, nmap_args }) => {
         // Build the nmap command - spawn() does NOT work on Vercel serverless!
         const args: string[] = [];
-        
+
         if (nmap_args && nmap_args.length > 0) {
           args.push(...nmap_args);
         }
         args.push(target);
-        
-        const command = `nmap ${args.join(" ")}`;
+
+        const shellEscape = (value: string) => {
+          if (/^[A-Za-z0-9_\/\.\-:]+$/.test(value)) return value;
+          return `'${value.replace(/'/g, "'\\''")}'`;
+        };
+
+        const command = `nmap ${args.map(shellEscape).join(" ")}`;
         
         return {
           content: [{
