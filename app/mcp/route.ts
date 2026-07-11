@@ -2,7 +2,7 @@ import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 
 const handler = createMcpHandler(
-  async (server) => {
+  (server) => {
     server.tool(
       "do-nmap",
       "Run nmap with specified target. Returns the command to run locally since CLI tools cannot execute on serverless. Nmap is a powerful network scanning tool for port discovery, service detection, OS fingerprinting, and security auditing.",
@@ -89,15 +89,7 @@ Note: CLI tools cannot execute on serverless platforms. Run this command on your
       }
     );
   },
-  {
-    capabilities: {
-      tools: {
-        "do-nmap": {
-          description: "Run nmap with specified target for port discovery, service detection, and security auditing"
-        }
-      }
-    }
-  },
+  {},
   {
     basePath: "",
     verboseLogs: true,
