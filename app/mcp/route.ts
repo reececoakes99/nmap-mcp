@@ -89,7 +89,15 @@ Note: CLI tools cannot execute on serverless platforms. Run this command on your
       }
     );
   },
-  {},
+  {
+    capabilities: {
+      tools: {
+        "do-nmap": {
+          description: "Run nmap with specified target for port discovery, service detection, and security auditing"
+        }
+      }
+    }
+  },
   {
     basePath: "",
     verboseLogs: true,
