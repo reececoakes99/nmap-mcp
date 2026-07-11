@@ -1,12 +1,46 @@
-# Example Next.js MCP Server
+# nmap-mcp
 
-**Uses `mcp-handler`**
+This repository includes:
+- a Next.js MCP server using `mcp-handler`
+- a Python FastMCP server (`/home/runner/work/nmap-mcp/nmap-mcp/server.py`) with nmap integration
 
-## Usage
+## Python FastMCP server (with nmap)
 
-This sample app uses the [Vercel MCP Adapter](https://www.npmjs.com/package/mcp-handler) that allows you to drop in an MCP server on a group of routes in any Next.js project.
+### Prerequisites
+- Python 3.10+
+- `nmap` installed and available on PATH
+  - macOS: `brew install nmap`
+  - Ubuntu/Debian: `sudo apt-get install -y nmap`
 
-Update `app/[transport]/route.ts` with your tools, prompts, and resources following the [MCP TypeScript SDK documentation](https://github.com/modelcontextprotocol/typescript-sdk/tree/main?tab=readme-ov-file#server).
+### Setup
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Run locally
+```bash
+python server.py
+```
+
+By default the server binds to `0.0.0.0:${PORT:-8000}` and serves MCP on `/mcp`.
+
+### Available Python MCP tool
+- `do_nmap(target, nmap_args=[])`
+  - Executes `nmap` via `subprocess.run` (no shell)
+  - Performs basic input validation on target and args
+  - Returns structured JSON-like output including host/port scan details parsed from nmap XML output
+
+Example tool input:
+```json
+{
+  "target": "scanme.nmap.org",
+  "nmap_args": ["-sV", "-T3"]
+}
+```
+
+## Next.js MCP server
 
 ## Notes for running on Vercel
 
@@ -15,7 +49,7 @@ Update `app/[transport]/route.ts` with your tools, prompts, and resources follow
 - After enabling Fluid compute, open `app/route.ts` and adjust `maxDuration` to 800 if you using a Vercel Pro or Enterprise account
 - [Deploy the Next.js MCP template](https://vercel.com/templates/next.js/model-context-protocol-mcp-with-next-js)
 
-## Sample Client
+## Sample client
 
 `script/test-client.mjs` contains a sample client to try invocations.
 

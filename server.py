@@ -1,13 +1,78 @@
 import os
 import subprocess
-import shlex
+import re
+import xml.etree.ElementTree as ET
 from fastmcp import FastMCP
 
 # Create the MCP server
 mcp = FastMCP("nmap-mcp")
 
+SAFE_TARGET_PATTERN = re.compile(r"^[A-Za-z0-9.\-:/]+$")
+DISALLOWED_ARG_PREFIXES = ("-oA", "-oN", "-oG", "-oS", "-oX", "--stylesheet")
+
+
+def _parse_nmap_xml(xml_output: str) -> dict:
+    hosts: list[dict] = []
+
+    if not xml_output.strip():
+        return {"hosts": hosts}
+
+    root = ET.fromstring(xml_output)
+    for host in root.findall("host"):
+        addresses = [addr.get("addr") for addr in host.findall("address") if addr.get("addr")]
+        hostnames = [
+            hostname.get("name")
+            for hostname in host.findall("hostnames/hostname")
+            if hostname.get("name")
+        ]
+
+        ports: list[dict] = []
+        for port in host.findall("ports/port"):
+            state_el = port.find("state")
+            service_el = port.find("service")
+            ports.append(
+                {
+                    "protocol": port.get("protocol"),
+                    "port": port.get("portid"),
+                    "state": state_el.get("state") if state_el is not None else None,
+                    "service": service_el.get("name") if service_el is not None else None,
+                    "product": service_el.get("product") if service_el is not None else None,
+                    "version": service_el.get("version") if service_el is not None else None,
+                }
+            )
+
+        hosts.append(
+            {
+                "addresses": addresses,
+                "hostnames": hostnames,
+                "status": (host.find("status").get("state") if host.find("status") is not None else None),
+                "ports": ports,
+            }
+        )
+
+    return {"hosts": hosts}
+
+
+def _validate_input(target: str, nmap_args: list[str] | None) -> tuple[bool, str]:
+    if not target or not SAFE_TARGET_PATTERN.match(target):
+        return False, "Invalid target. Use a valid hostname, IP, or CIDR."
+
+    if not nmap_args:
+        return True, ""
+
+    for arg in nmap_args:
+        if not isinstance(arg, str) or not arg.strip():
+            return False, "Invalid nmap_args item. All args must be non-empty strings."
+        if any(prefix == arg or arg.startswith(f"{prefix}=") for prefix in DISALLOWED_ARG_PREFIXES):
+            return False, "Output file arguments are not allowed."
+        if any(char in arg for char in (";", "&", "|", "`", "$", "\n", "\r")):
+            return False, "Unsupported characters in nmap args."
+
+    return True, ""
+
+
 @mcp.tool()
-def do_nmap(target: str, nmap_args: list[str] = None) -> str:
+def do_nmap(target: str, nmap_args: list[str] | None = None) -> dict:
     """
     Run nmap with specified target for port scanning and network discovery.
 
@@ -41,14 +106,19 @@ def do_nmap(target: str, nmap_args: list[str] = None) -> str:
               -v: Increase verbosity level
               --open: Only show open (or possibly open) ports
     """
-    # Build the nmap command
+    valid, validation_error = _validate_input(target=target, nmap_args=nmap_args)
+    if not valid:
+        return {"ok": False, "error": validation_error}
+
+    # Build the nmap command (always force XML to stdout for structured parsing)
     cmd = ["nmap"]
-    
+
     if nmap_args:
         cmd.extend(nmap_args)
-    
+
+    cmd.extend(["-oX", "-"])
     cmd.append(target)
-    
+
     try:
         # Run nmap with a timeout
         result = subprocess.run(
@@ -57,24 +127,55 @@ def do_nmap(target: str, nmap_args: list[str] = None) -> str:
             text=True,
             timeout=300  # 5 minute timeout
         )
-        
-        output = ""
-        if result.stdout:
-            output += result.stdout
-        if result.stderr:
-            output += "\n" + result.stderr
-        
+        parsed = _parse_nmap_xml(result.stdout) if result.stdout else {"hosts": []}
+
         if result.returncode == 0:
-            return f"nmap completed successfully:\n\n{output}"
+            return {
+                "ok": True,
+                "target": target,
+                "command": cmd,
+                "return_code": result.returncode,
+                "results": parsed,
+                "stderr": result.stderr or "",
+            }
         else:
-            return f"nmap exited with code {result.returncode}:\n\n{output}"
-            
+            return {
+                "ok": False,
+                "target": target,
+                "command": cmd,
+                "return_code": result.returncode,
+                "error": result.stderr or "nmap exited with a non-zero code",
+                "raw_xml": result.stdout or "",
+            }
+
+    except ET.ParseError:
+        return {
+            "ok": False,
+            "target": target,
+            "command": cmd,
+            "error": "Failed to parse nmap XML output",
+        }
     except subprocess.TimeoutExpired:
-        return "Error: nmap scan timed out after 5 minutes"
+        return {
+            "ok": False,
+            "target": target,
+            "command": cmd,
+            "error": "nmap scan timed out after 5 minutes",
+        }
     except FileNotFoundError:
-        return "Error: nmap binary not found. Please ensure nmap is installed."
+        return {
+            "ok": False,
+            "target": target,
+            "command": cmd,
+            "error": "nmap binary not found. Please ensure nmap is installed.",
+        }
     except Exception as e:
-        return f"Error running nmap: {str(e)}"
+        return {
+            "ok": False,
+            "target": target,
+            "command": cmd,
+            "error": f"Error running nmap: {str(e)}",
+        }
 
 
 # CRITICAL: Use SSE transport with correct host/port binding!
