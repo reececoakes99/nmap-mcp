@@ -89,15 +89,7 @@ Note: CLI tools cannot execute on serverless platforms. Run this command on your
       }
     );
   },
-  {
-    capabilities: {
-      tools: {
-        "do-nmap": {
-          description: "Run nmap with specified target. Returns the command to run locally since CLI tools cannot execute on serverless."
-        }
-      }
-    }
-  },
+  {},
   {
     basePath: "",
     verboseLogs: true,
