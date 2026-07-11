@@ -89,7 +89,15 @@ Note: CLI tools cannot execute on serverless platforms. Run this command on your
       }
     );
   },
-  {},
+  {
+    capabilities: {
+      tools: {
+        "do-nmap": {
+          description: "Run nmap network scanning tool with specified target and arguments"
+        }
+      }
+    }
+  },
   {
     basePath: "",
     verboseLogs: true,
