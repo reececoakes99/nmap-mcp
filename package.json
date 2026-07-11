@@ -1,5 +1,5 @@
 {
-  "name": "osint-tools-mcp-server",
+  "name": "nmap-mcp",
   "version": "1.0.0",
   "type": "module",
   "private": true,
