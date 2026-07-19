@@ -67,7 +67,7 @@ const handler = createMcpHandler(
         "do-wpscan": { description: toolDescription },
       },
     },
-  },
+  } as unknown as Parameters<typeof createMcpHandler>[1],
   {
     basePath: "",
     verboseLogs: true,
