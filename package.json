@@ -1,5 +1,5 @@
 {
-  "name": "nmap-mcp",
+  "name": "wpscan-mcp",
   "version": "1.0.0",
   "type": "module",
   "private": true,
@@ -9,10 +9,10 @@
     "start": "next start"
   },
   "dependencies": {
-    "mcp-handler": "^1.0.5",
     "next": "^15.2.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "mcp-handler": "^1.0.5",
     "zod": "^3.24.2"
   },
   "devDependencies": {
