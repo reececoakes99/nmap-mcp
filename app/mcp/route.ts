@@ -92,7 +92,9 @@ Note: CLI tools cannot execute on serverless platforms. Run this command on your
   {
     capabilities: {
       tools: {
-        listChanged: true,
+        "do-nmap": {
+          description: "Run nmap with specified target. Returns the command to run locally since CLI tools cannot execute on serverless. Nmap is a powerful network scanning tool for port discovery, service detection, OS fingerprinting, and security auditing.",
+        },
       }
     }
   },
