@@ -9,6 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@vercel/analytics": "^2.0.1",
     "mcp-handler": "^1.0.5",
     "next": "^15.2.6",
